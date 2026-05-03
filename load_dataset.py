@@ -209,80 +209,44 @@ def build_transform(is_train, img_size, color_jitter, mag=0.7, mean=[0.485, 0.45
                 ToTensorV2()
             ])
             
-        return A.Compose([
+        # Keep training augmentation conservative for medical images.
+        # Preserve lesion color/texture while adding only mild geometric variation.
+        train_ops = [
             A.Resize(img_size, img_size),
-
-            # ── Flips ──
             A.HorizontalFlip(p=0.5),
-            A.VerticalFlip(p=0.2),
-
-            # ── Rotation ──
             A.Rotate(
-                limit=20,
+                limit=7,
                 interpolation=cv2.INTER_CUBIC,
-                p=0.5
-            ),
-
-            # A.ColorJitter(),
-            A.OneOf([
-                A.ColorJitter(
-                    brightness=color_jitter,
-                    contrast=color_jitter,
-                    saturation=color_jitter,
-                    hue=color_jitter * 0.25,
-                    p=0.7
-                ),
-                A.RandomBrightnessContrast(
-                    brightness_limit=0.2 * mag,
-                    contrast_limit=0.2 * mag,
-                    p=1.0
-                ),
-                A.CLAHE(
-                    clip_limit=4.0,
-                    tile_grid_size=(8, 8),
-                    p=1.0
-                ),
-                A.Equalize(p=1.0),
-                A.Posterize(
-                    num_bits=max(1, int(8 - 4 * mag)),
-                    p=1.0
-                )
-            ], p=0.5),
-            A.OneOf([
-                A.Sharpen(
-                    alpha=(0.2 * mag, 0.5 * mag),
-                    p=1.0
-                ),
-                A.GaussianBlur(blur_limit=3, p=1.0),
-                A.MotionBlur(blur_limit=3, p=1.0),
-            ], p=0.3),
-             A.OneOf([
-                A.ShiftScaleRotate(
-                    shift_limit=0.05,
-                    scale_limit=0.1,
-                    rotate_limit=15,
-                    interpolation=cv2.INTER_CUBIC,
-                    p=1.0
-                ),
-                A.Affine(
-                    shear=(-10, 10),
-                    p=1.0
-                ),
-            ], p=0.3),
-             
-            # ── Random Erasing (re_prob, re_count) ──
-            A.CoarseDropout(
-                num_holes_range=(1, 3),
-                hole_height_range=(12, 24),
-                hole_width_range=(12, 24),
-                fill="random",
+                border_mode=cv2.BORDER_REFLECT_101,
                 p=0.2
             ),
+            A.ShiftScaleRotate(
+                shift_limit=0.02,
+                scale_limit=0.05,
+                rotate_limit=0,
+                interpolation=cv2.INTER_CUBIC,
+                border_mode=cv2.BORDER_REFLECT_101,
+                p=0.15
+            ),
+        ]
 
-            # ── Normalize + Tensor ──
+        if color_jitter is not None and color_jitter > 0:
+            jitter = max(0.0, min(color_jitter, 0.15))
+            train_ops.append(
+                A.ColorJitter(
+                    brightness=jitter,
+                    contrast=jitter,
+                    saturation=jitter * 0.6,
+                    hue=jitter * 0.1,
+                    p=0.15
+                )
+            )
+
+        train_ops.extend([
             A.Normalize(mean=mean, std=std),
             ToTensorV2()
         ])
+        return A.Compose(train_ops)
 
     t = []
 

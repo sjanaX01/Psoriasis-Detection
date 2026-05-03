@@ -197,11 +197,13 @@ def main(args):
     # )
     
     tr_df, val_df, test_df, class_names, num_classes = load_dataframes()
-    train_transfromation = build_transform(is_train=True, img_size=args.input_size, color_jitter=0.4)
+    train_transfromation = build_transform(is_train=True, img_size=args.input_size, color_jitter=args.color_jitter)
     dataset_train = build_dataset(tr_df, train_transfromation)
 
-    val_transformation = build_transform(is_train=False, img_size=args.input_size, color_jitter=0.4)    
-    
+    val_transformation = build_transform(is_train=False, img_size=args.input_size, color_jitter=args.color_jitter)    
+    test_transfromation = build_transform(is_train=False,img_size=args.input_size, color_jitter=args.color_jitter)
+
+    dataset_test = build_dataset(test_df, test_transfromation);
     if args.disable_eval:
         args.dist_eval = False
         dataset_val = None
@@ -223,6 +225,7 @@ def main(args):
         data_loader_val = build_dataLoader(dataset_val, batch_size=args.batch_size, shuffle=False, num_workers=args.num_workers)
     else:
         data_loader_val = None
+    data_loader_test = build_dataLoader(dataset_test, batch_size=args.batch_size, shuffle=False, num_workers=args.num_workers)
         
     mixup_fn = None
     mixup_active = args.mixup > 0 or args.cutmix > 0. or args.cutmix_minmax is not None
@@ -238,6 +241,7 @@ def main(args):
         pretrained=True,
         num_classes=num_classes,
         drop_path_rate=args.drop_path,
+        head_init_scale=args.head_init_scale,
     )
 
     if args.finetune:
@@ -344,8 +348,8 @@ def main(args):
 
     if args.eval:
         print(f"Eval only mode")
-        test_stats = evaluate(data_loader_val, model, device)
-        print(f"Accuracy of the network on {len(dataset_val)} test images: {test_stats['acc1']:.5f}%")
+        test_stats = evaluate(data_loader_test, model, device)
+        print(f"Accuracy of the network on {len(dataset_test)} test images: {test_stats['acc1']:.5f}%")
         return
     
     max_accuracy = 0.0
@@ -373,7 +377,7 @@ def main(args):
                     loss_scaler=loss_scaler, epoch=epoch, model_ema=model_ema)
         if data_loader_val is not None:
             test_stats = evaluate(data_loader_val, model, device, use_amp=args.use_amp)
-            print(f"Accuracy of the model on the {len(dataset_val)} test images: {test_stats['acc1']:.1f}%")
+            print(f"Accuracy of the model on the {len(dataset_val)} val images: {test_stats['acc1']:.1f}%")
             if max_accuracy < test_stats["acc1"]:
                 max_accuracy = test_stats["acc1"]
                 if args.output_dir and args.save_ckpt:
@@ -395,7 +399,7 @@ def main(args):
             # repeat testing routines for EMA, if ema eval is turned on
             if args.model_ema and args.model_ema_eval:
                 test_stats_ema = evaluate(data_loader_val, model_ema.ema, device, use_amp=args.use_amp)
-                print(f"Accuracy of the model EMA on {len(dataset_val)} test images: {test_stats_ema['acc1']:.1f}%")
+                print(f"Accuracy of the model EMA on {len(dataset_val)} val images: {test_stats_ema['acc1']:.1f}%")
                 if max_accuracy_ema < test_stats_ema["acc1"]:
                     max_accuracy_ema = test_stats_ema["acc1"]
                     if args.output_dir and args.save_ckpt:
